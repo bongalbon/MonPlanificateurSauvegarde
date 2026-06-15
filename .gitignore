@@ -1,0 +1,60 @@
+# === Python & Django ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environnement virtuel Python
+venv/
+Venv/
+.venv/
+env/
+.env/
+ENV/
+
+# Base de données de développement Django locale
+db.sqlite3
+db.sqlite3-journal
+
+# Fichiers statiques et médias
+media/
+static/
+staticfiles/
+backups/
+
+# === Node & Electron ===
+node_modules/
+electron_app/node_modules/
+electron_app/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# === OS & Système ===
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# === IDE & Configuration de projet ===
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo

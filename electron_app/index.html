@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Mon Planificateur de Sauvegarde - Gestion Multi-Projets</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Barre latérale -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1>Mon Planificateur</h1>
+            <button class="btn-add-project" id="btn-new" title="Créer un nouveau projet">+</button>
+        </div>
+        <div class="projects-list" id="projects-container">
+            <!-- Liste dynamique des projets -->
+        </div>
+    </div>
+
+    <!-- Conteneur principal (Espace de travail + Logs) -->
+    <div class="main-container" style="display: flex; flex-direction: column; flex-grow: 1; height: 100%; overflow: hidden;">
+        <!-- Espace principal de travail -->
+        <div class="workspace" id="main-workspace">
+        <div class="empty-state" id="empty-state">
+            <h2>Aucun projet sélectionné</h2>
+            <p>Veuillez cliquer sur un projet existant dans la barre latérale pour le configurer, ou cliquez sur le bouton "+" pour ajouter un nouveau projet de sauvegarde PostgreSQL + Médias.</p>
+        </div>
+
+        <!-- Panel du projet sélectionné -->
+        <div id="project-detail-panel" style="display: none;">
+            
+            <!-- Onglets de navigation supérieurs -->
+            <div class="tabs-header">
+                <button class="tab-btn active" id="btn-tab-sauvegarde" onclick="switchTab('sauvegarde')">Planification de Sauvegarde</button>
+                <button class="tab-btn" id="btn-tab-restauration" onclick="switchTab('restauration')">Restauration Avancée</button>
+            </div>
+
+            <!-- CONTENU : PLANIFICATION & SAUVEGARDE -->
+            <div class="tab-content" id="tab-sauvegarde" style="display: block;">
+                <div class="card">
+                    <div class="card-title">
+                        <span id="workspace-title">Configuration du Projet</span>
+                        <span class="badge" id="project-badge">Inactif</span>
+                    </div>
+                    
+                    <form id="project-form">
+                        <div class="form-grid">
+                            <div class="form-group full-width">
+                                <label for="nom_projet">Nom du Projet</label>
+                                <input type="text" id="nom_projet" required placeholder="Ex: Mon Site E-commerce">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="db_host">Hôte PostgreSQL</label>
+                                <input type="text" id="db_host" required placeholder="localhost">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="db_port">Port</label>
+                                <input type="text" id="db_port" required placeholder="5432">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="db_name">Nom de la Base</label>
+                                <input type="text" id="db_name" required placeholder="Ex: my_database">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="db_user">Utilisateur DB</label>
+                                <input type="text" id="db_user" required placeholder="postgres">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="db_password">Mot de passe DB</label>
+                                <input type="password" id="db_password" required placeholder="••••••••">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="frequence_minutes">Fréquence de sauvegarde (Minutes)</label>
+                                <input type="number" id="frequence_minutes" required min="1" placeholder="Ex: 60">
+                            </div>
+
+                            <div class="form-group full-width">
+                                <label for="chemin_media_local">Chemin du répertoire médias à sauvegarder</label>
+                                <div class="input-with-btn">
+                                    <input type="text" id="chemin_media_local" required placeholder="C:/Projets/MonSite/media">
+                                    <button type="button" class="btn-secondary" id="btn-browse-media">Parcourir...</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="toggle-container">
+                            <div class="toggle-group" id="toggle-active">
+                                <label class="switch">
+                                    <input type="checkbox" id="est_actif" checked>
+                                    <span class="slider"></span>
+                                </label>
+                                <span>Sauvegarde automatique active</span>
+                            </div>
+                            
+                            <div class="toggle-group" id="toggle-startup">
+                                <label class="switch">
+                                    <input type="checkbox" id="lancer_au_demarrage">
+                                    <span class="slider"></span>
+                                </label>
+                                <span>Sauvegarder au démarrage</span>
+                            </div>
+                        </div>
+
+                        <!-- Configuration des destinations de sauvegarde -->
+                        <div class="card-title" style="margin-top: 30px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">
+                            <span>Destinations de Sauvegarde</span>
+                        </div>
+
+                        <div class="destinations-wrapper">
+                            <!-- Destination Locale -->
+                            <div class="dest-card" id="dest-card-local">
+                                <div class="dest-header">
+                                    <div class="dest-title-wrap">
+                                        <input type="checkbox" id="dest_local_active" class="dest-checkbox">
+                                        <label for="dest_local_active">Dossier Local ou Réseau</label>
+                                    </div>
+                                </div>
+                                <div class="dest-fields">
+                                    <div class="form-group full-width">
+                                        <label for="chemin_local">Répertoire de destination des archives</label>
+                                        <div class="input-with-btn">
+                                            <input type="text" id="chemin_local" placeholder="Ex: D:/Backups/MonProjet">
+                                            <button type="button" class="btn-secondary" id="btn-browse-backup">Parcourir...</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Destination Google Drive -->
+                            <div class="dest-card" id="dest-card-gdrive">
+                                <div class="dest-header">
+                                    <div class="dest-title-wrap">
+                                        <input type="checkbox" id="dest_gdrive_active" class="dest-checkbox">
+                                        <label for="dest_gdrive_active">Google Drive</label>
+                                    </div>
+                                </div>
+                                <div class="dest-fields">
+                                    <div class="oauth-connect-row">
+                                        <div class="oauth-status">
+                                            <span id="gdrive-status-badge" class="badge badge-danger">Non connecté</span>
+                                            <span id="gdrive-status-text" style="font-size: 0.85rem; color: var(--text-muted);">Associer votre compte Drive</span>
+                                        </div>
+                                        <button type="button" class="btn-secondary" id="btn-connect-gdrive">Se connecter...</button>
+                                    </div>
+                                    <input type="hidden" id="gdrive_token">
+                                    <div class="form-group full-width">
+                                        <label for="gdrive_folder">Identifiant du dossier de destination (ID Google Drive)</label>
+                                        <input type="text" id="gdrive_folder" placeholder="Laisser vide pour la racine, ou coller l'ID du dossier">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Destination OneDrive -->
+                            <div class="dest-card" id="dest-card-onedrive">
+                                <div class="dest-header">
+                                    <div class="dest-title-wrap">
+                                        <input type="checkbox" id="dest_onedrive_active" class="dest-checkbox">
+                                        <label for="dest_onedrive_active">Microsoft OneDrive</label>
+                                    </div>
+                                </div>
+                                <div class="dest-fields">
+                                    <div class="oauth-connect-row">
+                                        <div class="oauth-status">
+                                            <span id="onedrive-status-badge" class="badge badge-danger">Non connecté</span>
+                                            <span id="onedrive-status-text" style="font-size: 0.85rem; color: var(--text-muted);">Associer votre compte Microsoft</span>
+                                        </div>
+                                        <button type="button" class="btn-secondary" id="btn-connect-onedrive">Se connecter...</button>
+                                    </div>
+                                    <input type="hidden" id="onedrive_token">
+                                    <div class="form-group full-width">
+                                        <label for="onedrive_folder">Chemin du dossier de destination OneDrive</label>
+                                        <input type="text" id="onedrive_folder" placeholder="Ex: /Sauvegardes/MonProjet">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Actions du formulaire -->
+                        <div class="form-actions">
+                            <button type="button" class="btn-danger" id="btn-delete" style="display: none;">Supprimer</button>
+                            <div style="flex-grow: 1;"></div>
+                            <div class="form-actions-right">
+                                <button type="button" class="btn-success" id="btn-backup-now" style="display: none;">Sauvegarder maintenant</button>
+                                <button type="submit" class="btn-primary" id="btn-save">Enregistrer</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Historique de sauvegarde -->
+                <div class="card" id="history-card" style="display: none;">
+                    <div class="card-title">Historique des Sauvegardes</div>
+                    <div class="history-table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date & Heure d'exécution</th>
+                                    <th>Action</th>
+                                    <th>Statut</th>
+                                    <th>Cible générée</th>
+                                    <th style="text-align: right;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-container">
+                                <!-- Lignes d'historique -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CONTENU : RESTAURATION AVANCÉE -->
+            <div class="tab-content" id="tab-restauration">
+                <div class="card">
+                    <div class="card-title">
+                        <span>Restauration de Base de Données</span>
+                    </div>
+
+                    <!-- Callout Avertissement critique -->
+                    <div class="callout">
+                        <div class="callout-title">
+                            <span>⚠</span> Avertissement Critique de Sécurité
+                        </div>
+                        <p>Le lancement d'une restauration est une opération destructrice. Les données actuelles de la base PostgreSQL ciblée seront supprimées et remplacées par le contenu de l'archive de sauvegarde. Les fichiers du répertoire de médias seront vidés et réinitialisés.</p>
+                    </div>
+
+                    <div class="card-title" style="font-size: 1rem; margin-top: 20px; margin-bottom: 12px; border-bottom: none; padding-bottom: 0;">
+                        <span>1. Base de données cible (destination)</span>
+                    </div>
+                    
+                    <div class="card" style="background-color: rgba(15, 23, 42, 0.4); border-color: var(--border-color); padding: 18px; margin-bottom: 24px;">
+                        <ul class="restore-summary-list">
+                            <li><strong>Projet lié :</strong> <span id="restore-info-project">N/A</span></li>
+                            <li><strong>Serveur PostgreSQL :</strong> <span id="restore-info-dbhost">N/A</span></li>
+                            <li><strong>Base cible :</strong> <span id="restore-info-dbname" style="color: #fda4af; font-weight: 500;">N/A</span></li>
+                            <li><strong>Utilisateur :</strong> <span id="restore-info-dbuser">N/A</span></li>
+                            <li><strong>Répertoire Médias :</strong> <span id="restore-info-mediapath">N/A</span></li>
+                        </ul>
+                    </div>
+
+                    <div class="card-title" style="font-size: 1rem; margin-top: 20px; margin-bottom: 12px; border-bottom: none; padding-bottom: 0;">
+                        <span>2. Sélectionner la source de la restauration</span>
+                    </div>
+
+                    <div class="source-selector-container">
+                        <!-- Option A : Fichier ZIP local -->
+                        <label class="source-option">
+                            <input type="radio" name="restore_source_type" id="radio-source-file" value="file" checked>
+                            <div class="source-details">
+                                <div class="source-title">Depuis un fichier d'archive compressé local (.zip)</div>
+                                <div class="source-desc">Restaurer à partir d'un fichier ZIP stocké sur votre ordinateur ou réseau local.</div>
+                                <div class="input-with-btn" id="restore-file-input-wrapper" style="margin-top: 10px;">
+                                    <input type="text" id="restore_zip_file_path" placeholder="Ex: C:/Backups/NomProjet_sauvegarde.zip">
+                                    <button type="button" class="btn-secondary" id="btn-browse-restore-zip">Parcourir...</button>
+                                </div>
+                            </div>
+                        </label>
+
+                        <!-- Option B : Historique du projet -->
+                        <label class="source-option">
+                            <input type="radio" name="restore_source_type" id="radio-source-history" value="history">
+                            <div class="source-details">
+                                <div class="source-title">Depuis l'historique des sauvegardes réussies</div>
+                                <div class="source-desc">Restaurer en sélectionnant une sauvegarde répertoriée dans le cloud ou localement.</div>
+                                <div id="restore-history-select-wrapper" style="margin-top: 10px; display: none;">
+                                    <label for="restore_history_id" style="font-size: 0.8rem; color: var(--text-muted); display:block; margin-bottom:6px;">Choisir une archive sauvegardée :</label>
+                                    <select id="restore_history_id">
+                                        <option value="">-- Sélectionnez une sauvegarde --</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="form-actions" style="margin-top: 30px;">
+                        <div style="flex-grow: 1;"></div>
+                        <button type="button" class="btn-warning" id="btn-launch-restoration">Lancer la Restauration</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section Diagnostic & Journaux (Accordéon) -->
+    <div class="log-panel" id="log-panel">
+        <div class="log-header" id="log-header">
+            <span>📝 Console de Diagnostic & Logs du Serveur</span>
+            <span class="log-toggle-icon">▲</span>
+        </div>
+        <div class="log-body" id="log-body">
+            <div class="log-actions">
+                <button class="btn-secondary btn-sm" id="btn-clear-logs">Effacer</button>
+                <button class="btn-secondary btn-sm" id="btn-copy-logs">Copier les Logs</button>
+            </div>
+            <div class="log-terminal" id="log-terminal"></div>
+        </div>
+    </div>
+</div>
+
+    <!-- Modal d'avertissement de restauration -->
+    <div class="modal-overlay" id="confirm-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-warning-icon">⚠</span>
+                <span>Confirmation de Restauration</span>
+            </div>
+            <div class="modal-body">
+                <p><strong>ATTENTION !</strong> Cette opération est critique et destructive.</p>
+                <p style="margin-top: 10px;">La base de données actuelle du projet sera réinitialisée et toutes les tables seront écrasées.</p>
+                <p>Les fichiers médias locaux actuels seront également remplacés par ceux de l'archive.</p>
+                <p style="margin-top: 14px; color: var(--text-main);">Pour confirmer, tapez le mot <strong>RESTAURER</strong> ci-dessous :</p>
+                <input type="text" id="confirm-verification-input" style="margin-top: 10px; border-color: var(--danger);" placeholder="Tapez RESTAURER">
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="btn-modal-cancel">Annuler</button>
+                <button class="btn-primary" id="btn-modal-confirm" style="background: var(--danger); box-shadow: 0 4px 12px var(--danger-glow);" disabled>Oui, restaurer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Écran de chargement transparent -->
+    <div class="loading-overlay" id="loading-spinner">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-text-content">Sauvegarde en cours d'exécution...</div>
+    </div>
+
+    <!-- Conteneur de toasts -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const API_BASE_URL = 'http://127.0.0.1:8000/api';
+
+        let projects = [];
+        let selectedProject = null;
+        let selectedHistoryItemToRestore = null;
+        let isDirectFileRestore = false;
+
+        // Éléments du DOM
+        const projectsContainer = document.getElementById('projects-container');
+        const mainWorkspace = document.getElementById('main-workspace');
+        const emptyState = document.getElementById('empty-state');
+        const projectDetailPanel = document.getElementById('project-detail-panel');
+        const workspaceTitle = document.getElementById('workspace-title');
+        const projectBadge = document.getElementById('project-badge');
+        
+        const projectForm = document.getElementById('project-form');
+        const btnNew = document.getElementById('btn-new');
+        const btnDelete = document.getElementById('btn-delete');
+        const btnBackupNow = document.getElementById('btn-backup-now');
+        const historyCard = document.getElementById('history-card');
+        const historyContainer = document.getElementById('history-container');
+
+        // Modal Restauration
+        const confirmModal = document.getElementById('confirm-modal');
+        const verificationInput = document.getElementById('confirm-verification-input');
+        const btnModalCancel = document.getElementById('btn-modal-cancel');
+        const btnModalConfirm = document.getElementById('btn-modal-confirm');
+
+        // Spinner & Toaster
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const loadingTextContent = document.getElementById('loading-text-content');
+        const toastContainer = document.getElementById('toast-container');
+
+        // Configuration pour la gestion de l'état des destinations
+        let destinationsConfigState = {
+            local: { id: null },
+            gdrive: { id: null },
+            onedrive: { id: null }
+        };
+
+        // --- GESTION DES ONGLETS ---
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            if (tabName === 'sauvegarde') {
+                document.getElementById('tab-sauvegarde').style.display = 'block';
+                document.getElementById('btn-tab-sauvegarde').classList.add('active');
+            } else if (tabName === 'restauration') {
+                document.getElementById('tab-restauration').style.display = 'block';
+                document.getElementById('btn-tab-restauration').classList.add('active');
+                updateRestaurationTabSummary();
+            }
+        }
+
+        function updateRestaurationTabSummary() {
+            if (!selectedProject) return;
+            document.getElementById('restore-info-project').textContent = selectedProject.nom_projet;
+            document.getElementById('restore-info-dbhost').textContent = `${selectedProject.db_host}:${selectedProject.db_port}`;
+            document.getElementById('restore-info-dbname').textContent = selectedProject.db_name;
+            document.getElementById('restore-info-dbuser').textContent = selectedProject.db_user;
+            document.getElementById('restore-info-mediapath').textContent = selectedProject.chemin_media_local;
+
+            // Remplir le dropdown d'historique de restauration
+            fetchHistoryOptions(selectedProject.id);
+        }
+
+        async function fetchHistoryOptions(projectId) {
+            const selectEl = document.getElementById('restore_history_id');
+            selectEl.innerHTML = '<option value="">-- Sélectionnez une sauvegarde --</option>';
+            try {
+                const response = await fetch(`${API_BASE_URL}/historique/`);
+                if (response.ok) {
+                    const allHistory = await response.json();
+                    const projectHistory = allHistory.filter(item => item.projet === projectId && item.type_action === 'sauvegarde' && item.statut === 'succes');
+                    
+                    projectHistory.forEach(item => {
+                        const date = new Date(item.date_execution).toLocaleString('fr-FR');
+                        const opt = document.createElement('option');
+                        opt.value = item.id;
+                        opt.textContent = `${date} - ${item.chemin_archive_generee}`;
+                        selectEl.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                console.error("Impossible de récupérer l'historique pour le menu de restauration", err);
+            }
+        }
+
+        // Gestion du type de source de restauration
+        document.querySelectorAll('input[name="restore_source_type"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const val = e.target.value;
+                if (val === 'file') {
+                    document.getElementById('restore-file-input-wrapper').style.display = 'flex';
+                    document.getElementById('restore-history-select-wrapper').style.display = 'none';
+                } else {
+                    document.getElementById('restore-file-input-wrapper').style.display = 'none';
+                    document.getElementById('restore-history-select-wrapper').style.display = 'block';
+                }
+            });
+        });
+
+        // --- GESTION DES TOASTS ---
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            
+            const textSpan = document.createElement('span');
+            textSpan.textContent = message;
+            toast.appendChild(textSpan);
+            
+            const badge = document.createElement('span');
+            badge.className = `badge ${type === 'success' ? 'badge-success' : 'badge-danger'}`;
+            badge.textContent = type === 'success' ? 'Info' : 'Erreur';
+            toast.appendChild(badge);
+
+            toastContainer.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'toastSlideIn 0.3s ease reverse forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // --- CHARGEMENT INITIAL & API ---
+        async function fetchAllProjects() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/projet/`);
+                if (response.ok) {
+                    projects = await response.json();
+                    renderProjectsList();
+                } else {
+                    showToast("Erreur de récupération des projets", "error");
+                    addDiagnosticLog(`Erreur HTTP lors de la récupération des projets: ${response.status} ${response.statusText}`, 'error');
+                }
+            } catch (err) {
+                showToast("Erreur de communication avec le serveur Django", "error");
+                addDiagnosticLog(`Impossible de contacter le serveur Django sur ${API_BASE_URL} : ${err.message}`, 'error');
+            }
+        }
+
+        function renderProjectsList() {
+            projectsContainer.innerHTML = '';
+            projects.forEach(project => {
+                const item = document.createElement('div');
+                item.className = `project-item ${selectedProject && selectedProject.id === project.id ? 'active' : ''}`;
+                
+                const title = document.createElement('span');
+                title.className = 'project-item-title';
+                title.textContent = project.nom_projet;
+                item.appendChild(title);
+
+                const statusIndicator = document.createElement('span');
+                statusIndicator.className = `project-item-status ${project.est_actif ? 'active' : ''}`;
+                item.appendChild(statusIndicator);
+
+                item.addEventListener('click', () => selectProject(project));
+                projectsContainer.appendChild(item);
+            });
+        }
+
+        function toggleDestFields(type, visible) {
+            const card = document.getElementById(`dest-card-${type}`);
+            if (!card) return;
+            const fields = card.querySelector('.dest-fields');
+            if (visible) {
+                fields.style.display = 'grid';
+                card.classList.add('active');
+            } else {
+                fields.style.display = 'none';
+                card.classList.remove('active');
+            }
+        }
+
+        // Écouter les modifications manuelles des checkboxes de destinations
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('dest_local_active').addEventListener('change', (e) => {
+                toggleDestFields('local', e.target.checked);
+            });
+            document.getElementById('dest_gdrive_active').addEventListener('change', (e) => {
+                toggleDestFields('gdrive', e.target.checked);
+            });
+            document.getElementById('dest_onedrive_active').addEventListener('change', (e) => {
+                toggleDestFields('onedrive', e.target.checked);
+            });
+        });
+
+        function updateCloudConnectionStatus(provider, connected) {
+            const badge = document.getElementById(`${provider}-status-badge`);
+            const text = document.getElementById(`${provider}-status-text`);
+            const btn = document.getElementById(`btn-connect-${provider}`);
+            
+            if (connected) {
+                badge.className = "badge badge-success";
+                badge.textContent = "✓ Connecté";
+                text.textContent = "Authentification Cloud valide";
+                btn.textContent = "Reconnecter...";
+            } else {
+                badge.className = "badge badge-danger";
+                badge.textContent = "Non connecté";
+                text.textContent = "Associer votre compte";
+                btn.textContent = "Se connecter...";
+            }
+        }
+
+        async function selectProject(project) {
+            selectedProject = project;
+            renderProjectsList();
+            switchTab('sauvegarde'); // Revenir à l'onglet sauvegarde
+
+            // Remplir le formulaire
+            document.getElementById('nom_projet').value = project.nom_projet;
+            document.getElementById('db_host').value = project.db_host;
+            document.getElementById('db_port').value = project.db_port;
+            document.getElementById('db_name').value = project.db_name;
+            document.getElementById('db_user').value = project.db_user;
+            document.getElementById('db_password').value = project.db_password;
+            document.getElementById('chemin_media_local').value = project.chemin_media_local;
+            document.getElementById('frequence_minutes').value = project.frequence_minutes;
+            document.getElementById('est_actif').checked = project.est_actif;
+            document.getElementById('lancer_au_demarrage').checked = project.lancer_au_demarrage;
+
+            workspaceTitle.textContent = `Configuration : ${project.nom_projet}`;
+            projectBadge.textContent = project.est_actif ? 'Planification active' : 'Inactif';
+            projectBadge.className = `badge ${project.est_actif ? 'badge-success' : 'badge-danger'}`;
+
+            // Réinitialiser l'état des destinations
+            destinationsConfigState = {
+                local: { id: null },
+                gdrive: { id: null },
+                onedrive: { id: null }
+            };
+            
+            // Décochez et masquez tous les formulaires de destination
+            document.getElementById('dest_local_active').checked = false;
+            toggleDestFields('local', false);
+            document.getElementById('chemin_local').value = '';
+            
+            document.getElementById('dest_gdrive_active').checked = false;
+            toggleDestFields('gdrive', false);
+            document.getElementById('gdrive_token').value = '';
+            document.getElementById('gdrive_folder').value = '';
+            
+            document.getElementById('dest_onedrive_active').checked = false;
+            toggleDestFields('onedrive', false);
+            document.getElementById('onedrive_token').value = '';
+            document.getElementById('onedrive_folder').value = '';
+
+            updateCloudConnectionStatus('gdrive', false);
+            updateCloudConnectionStatus('onedrive', false);
+
+            // Remplir avec les données associées
+            if (project.destinations && Array.isArray(project.destinations)) {
+                project.destinations.forEach(dest => {
+                    const type = dest.type_destination;
+                    if (destinationsConfigState[type]) {
+                        destinationsConfigState[type].id = dest.id;
+                        
+                        if (type === 'local') {
+                            document.getElementById('dest_local_active').checked = true;
+                            toggleDestFields('local', true);
+                            document.getElementById('chemin_local').value = dest.chemin_local || '';
+                        } else if (type === 'gdrive') {
+                            document.getElementById('dest_gdrive_active').checked = true;
+                            toggleDestFields('gdrive', true);
+                            document.getElementById('gdrive_token').value = dest.token_auth_cloud || '';
+                            document.getElementById('gdrive_folder').value = dest.dossier_cible_cloud || '';
+                            if (dest.token_auth_cloud) {
+                                updateCloudConnectionStatus('gdrive', true);
+                            }
+                        } else if (type === 'onedrive') {
+                            document.getElementById('dest_onedrive_active').checked = true;
+                            toggleDestFields('onedrive', true);
+                            document.getElementById('onedrive_token').value = dest.token_auth_cloud || '';
+                            document.getElementById('onedrive_folder').value = dest.dossier_cible_cloud || '';
+                            if (dest.token_auth_cloud) {
+                                updateCloudConnectionStatus('onedrive', true);
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Boutons d'actions et affichage panels
+            btnDelete.style.display = 'block';
+            btnBackupNow.style.display = 'block';
+            emptyState.style.display = 'none';
+            projectDetailPanel.style.display = 'block';
+            
+            // Charger l'historique du projet
+            fetchHistory(project.id);
+        }
+
+        async function fetchHistory(projectId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/historique/`);
+                if (response.ok) {
+                    const allHistory = await response.json();
+                    const projectHistory = allHistory.filter(item => item.projet === projectId);
+                    renderHistory(projectHistory);
+                }
+            } catch (err) {
+                console.error("Impossible de récupérer l'historique", err);
+            }
+        }
+
+        function renderHistory(historyList) {
+            historyContainer.innerHTML = '';
+            if (historyList.length === 0) {
+                historyCard.style.display = 'block';
+                historyContainer.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Aucune opération enregistrée dans l\'historique.</td></tr>';
+                return;
+            }
+
+            historyList.forEach(item => {
+                const tr = document.createElement('tr');
+                const date = new Date(item.date_execution);
+                const dateStr = date.toLocaleString('fr-FR');
+
+                tr.innerHTML = `
+                    <td>${dateStr}</td>
+                    <td><span class="badge ${item.type_action === 'sauvegarde' ? 'badge-success' : 'badge-warning'}">${item.type_action.toUpperCase()}</span></td>
+                    <td><span class="badge ${item.statut === 'succes' ? 'badge-success' : 'badge-danger'}">${item.statut.toUpperCase()}</span></td>
+                    <td title="${item.chemin_archive_generee || 'N/A'}">${item.chemin_archive_generee || 'Aucune archive'}</td>
+                    <td style="text-align: right;"></td>
+                `;
+
+                const actionTd = tr.querySelector('td:last-child');
+                
+                if (item.type_action === 'sauvegarde' && item.statut === 'succes') {
+                    const btnRestore = document.createElement('button');
+                    btnRestore.className = 'btn-restore-item';
+                    btnRestore.textContent = 'Restaurer';
+                    btnRestore.addEventListener('click', () => {
+                        selectedHistoryItemToRestore = item;
+                        isDirectFileRestore = false;
+                        openConfirmationModal();
+                    });
+                    actionTd.appendChild(btnRestore);
+                } else {
+                    actionTd.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">-</span>';
+                }
+
+                historyContainer.appendChild(tr);
+            });
+            historyCard.style.display = 'block';
+        }
+
+        // --- CREATION DE PROJET ---
+        btnNew.addEventListener('click', () => {
+            selectedProject = null;
+            renderProjectsList();
+
+            projectForm.reset();
+            workspaceTitle.textContent = "Nouveau Projet de Sauvegarde";
+            projectBadge.textContent = "Nouveau";
+            projectBadge.className = "badge badge-warning";
+
+            // Réinitialiser destinations
+            destinationsConfigState = {
+                local: { id: null },
+                gdrive: { id: null },
+                onedrive: { id: null }
+            };
+            document.getElementById('dest_local_active').checked = false;
+            toggleDestFields('local', false);
+            document.getElementById('dest_gdrive_active').checked = false;
+            toggleDestFields('gdrive', false);
+            document.getElementById('dest_onedrive_active').checked = false;
+            toggleDestFields('onedrive', false);
+            updateCloudConnectionStatus('gdrive', false);
+            updateCloudConnectionStatus('onedrive', false);
+
+            btnDelete.style.display = 'none';
+            btnBackupNow.style.display = 'none';
+            historyCard.style.display = 'none';
+            emptyState.style.display = 'none';
+            projectDetailPanel.style.display = 'block';
+
+            document.getElementById('nom_projet').focus();
+        });
+
+        // --- SAUVEGARDE ET ENREGISREMENT ---
+        projectForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const projectData = {
+                nom_projet: document.getElementById('nom_projet').value,
+                db_host: document.getElementById('db_host').value || 'localhost',
+                db_port: document.getElementById('db_port').value || '5432',
+                db_name: document.getElementById('db_name').value,
+                db_user: document.getElementById('db_user').value,
+                db_password: document.getElementById('db_password').value,
+                chemin_media_local: document.getElementById('chemin_media_local').value,
+                frequence_minutes: parseInt(document.getElementById('frequence_minutes').value),
+                est_actif: document.getElementById('est_actif').checked,
+                lancer_au_demarrage: document.getElementById('lancer_au_demarrage').checked
+            };
+
+            showLoadingSpinner("Enregistrement du projet...");
+
+            try {
+                let projectId;
+                let response;
+
+                if (selectedProject) {
+                    response = await fetch(`${API_BASE_URL}/projet/${selectedProject.id}/`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(projectData)
+                    });
+                    projectId = selectedProject.id;
+                } else {
+                    response = await fetch(`${API_BASE_URL}/projet/`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(projectData)
+                    });
+                    const resJson = await response.json();
+                    projectId = resJson.id;
+                }
+
+                if (!response.ok) {
+                    throw new Error("Erreur de sauvegarde du projet");
+                }
+
+                // Gérer les destinations associées
+                await saveDestinations(projectId);
+
+                showToast("Projet enregistré avec succès !");
+                await fetchAllProjects();
+
+                const updatedProject = projects.find(p => p.id === projectId);
+                if (updatedProject) {
+                    selectProject(updatedProject);
+                }
+
+            } catch (err) {
+                showToast(err.message, "error");
+            } finally {
+                hideLoadingSpinner();
+            }
+        });
+
+        async function saveDestinations(projectId) {
+            const destTypes = ['local', 'gdrive', 'onedrive'];
+
+            for (const type of destTypes) {
+                const isActive = document.getElementById(`dest_${type}_active`).checked;
+                const state = destinationsConfigState[type];
+                
+                let payload = {
+                    projet: projectId,
+                    type_destination: type
+                };
+
+                if (type === 'local') {
+                    payload.chemin_local = document.getElementById('chemin_local').value;
+                } else if (type === 'gdrive') {
+                    payload.token_auth_cloud = document.getElementById('gdrive_token').value;
+                    payload.dossier_cible_cloud = document.getElementById('gdrive_folder').value;
+                } else if (type === 'onedrive') {
+                    payload.token_auth_cloud = document.getElementById('onedrive_token').value;
+                    payload.dossier_cible_cloud = document.getElementById('onedrive_folder').value;
+                }
+
+                if (isActive) {
+                    if (state.id) {
+                        await fetch(`${API_BASE_URL}/destination/${state.id}/`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                    } else {
+                        await fetch(`${API_BASE_URL}/destination/`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                    }
+                } else {
+                    if (state.id) {
+                        await fetch(`${API_BASE_URL}/destination/${state.id}/`, {
+                            method: 'DELETE'
+                        });
+                    }
+                }
+            }
+        }
+
+        // --- SUPPRESSION DU PROJET ---
+        btnDelete.addEventListener('click', async () => {
+            if (!selectedProject) return;
+
+            if (confirm(`Voulez-vous vraiment supprimer le projet "${selectedProject.nom_projet}" et l'ensemble de ses configurations ?`)) {
+                showLoadingSpinner("Suppression...");
+                try {
+                    const response = await fetch(`${API_BASE_URL}/projet/${selectedProject.id}/`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        showToast("Projet supprimé.");
+                        selectedProject = null;
+                        await fetchAllProjects();
+                        projectDetailPanel.style.display = 'none';
+                        emptyState.style.display = 'flex';
+                    } else {
+                        showToast("Impossible de supprimer le projet", "error");
+                    }
+                } catch (err) {
+                    showToast("Erreur de connexion", "error");
+                } finally {
+                    hideLoadingSpinner();
+                }
+            }
+        });
+
+        // --- SAUVEGARDE INSTANTANÉE ---
+        btnBackupNow.addEventListener('click', async () => {
+            if (!selectedProject) return;
+
+            showLoadingSpinner("Sauvegarde PostgreSQL & Médias en cours...");
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/projet/${selectedProject.id}/sauvegarder/`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showToast("Sauvegarde manuelle effectuée !");
+                    addDiagnosticLog(`Sauvegarde manuelle réussie pour le projet: ${selectedProject.nom_projet}`, 'success');
+                    fetchHistory(selectedProject.id);
+                } else {
+                    const errRes = await response.json();
+                    showToast(`Échec : ${errRes.message || 'Erreur serveur'}`, "error");
+                    addDiagnosticLog(`Échec de sauvegarde manuelle pour le projet ${selectedProject.nom_projet} : ${errRes.message || 'Erreur serveur'}`, 'error');
+                }
+            } catch (err) {
+                showToast("Erreur de contact avec le serveur", "error");
+                addDiagnosticLog(`Erreur de contact avec le serveur lors de la sauvegarde : ${err.message}`, 'error');
+            } finally {
+                hideLoadingSpinner();
+            }
+        });
+
+        // --- OAUTH CLOUD AUTHENTICATION ---
+        document.getElementById('btn-connect-gdrive').addEventListener('click', () => {
+            ipcRenderer.send('start-oauth-flow', 'gdrive');
+        });
+
+        document.getElementById('btn-connect-onedrive').addEventListener('click', () => {
+            ipcRenderer.send('start-oauth-flow', 'onedrive');
+        });
+
+        ipcRenderer.on('oauth-flow-completed', (event, provider, tokenStr) => {
+            if (provider === 'gdrive') {
+                document.getElementById('gdrive_token').value = tokenStr;
+                updateCloudConnectionStatus('gdrive', true);
+            } else if (provider === 'onedrive') {
+                document.getElementById('onedrive_token').value = tokenStr;
+                updateCloudConnectionStatus('onedrive', true);
+            }
+            showToast(`Connexion réussie à votre compte Cloud (${provider === 'gdrive' ? 'Google Drive' : 'OneDrive'})`);
+        });
+
+        // --- DIALOGUES DOSSIERS NATIVES VIA IPC ---
+        document.getElementById('btn-browse-media').addEventListener('click', () => {
+            ipcRenderer.send('select-media-folder');
+        });
+
+        ipcRenderer.on('media-folder-selected', (event, path) => {
+            document.getElementById('chemin_media_local').value = path;
+        });
+
+        document.getElementById('btn-browse-backup').addEventListener('click', () => {
+            ipcRenderer.send('select-backup-folder');
+        });
+
+        ipcRenderer.on('backup-folder-selected', (event, path) => {
+            document.getElementById('chemin_local').value = path;
+        });
+
+        // Parcourir pour le ZIP de restauration
+        document.getElementById('btn-browse-restore-zip').addEventListener('click', () => {
+            ipcRenderer.send('select-backup-file');
+        });
+
+        ipcRenderer.on('backup-file-selected', (event, path) => {
+            document.getElementById('restore_zip_file_path').value = path;
+        });
+
+        // --- RESTAURATION AVANCÉE (FONCTIONNALITÉ DHONGLE) ---
+        document.getElementById('btn-launch-restoration').addEventListener('click', () => {
+            if (!selectedProject) return;
+
+            const sourceType = document.querySelector('input[name="restore_source_type"]:checked').value;
+            
+            if (sourceType === 'file') {
+                const filePath = document.getElementById('restore_zip_file_path').value.trim();
+                if (!filePath) {
+                    showToast("Veuillez sélectionner un fichier d'archive ZIP valide.", "error");
+                    return;
+                }
+                isDirectFileRestore = true;
+                selectedHistoryItemToRestore = filePath; // stocker le chemin
+            } else {
+                const historyId = document.getElementById('restore_history_id').value;
+                if (!historyId) {
+                    showToast("Veuillez sélectionner une sauvegarde dans la liste.", "error");
+                    return;
+                }
+                isDirectFileRestore = false;
+                selectedHistoryItemToRestore = historyId; // stocker l'ID de l'historique
+            }
+
+            openConfirmationModal();
+        });
+
+        // --- CONFIRMATION DE RESTAURATION (MODALE) ---
+        function openConfirmationModal() {
+            verificationInput.value = '';
+            btnModalConfirm.disabled = true;
+            confirmModal.style.display = 'flex';
+            verificationInput.focus();
+        }
+
+        function closeConfirmationModal() {
+            confirmModal.style.display = 'none';
+        }
+
+        btnModalCancel.addEventListener('click', closeConfirmationModal);
+        
+        verificationInput.addEventListener('input', () => {
+            btnModalConfirm.disabled = verificationInput.value.trim() !== 'RESTAURER';
+        });
+
+        btnModalConfirm.addEventListener('click', async () => {
+            closeConfirmationModal();
+            
+            if (isDirectFileRestore) {
+                // Restauration directe depuis un fichier local ZIP
+                showLoadingSpinner("Restauration depuis le fichier en cours...");
+                try {
+                    const response = await fetch(`${API_BASE_URL}/projet/${selectedProject.id}/restaurer_fichier/`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ chemin_archive: selectedHistoryItemToRestore })
+                    });
+                    if (response.ok) {
+                        showToast("Restauration à partir du fichier lancée en arrière-plan !");
+                        addDiagnosticLog(`Restauration lancée pour le projet ${selectedProject.nom_projet} depuis le fichier local: ${selectedHistoryItemToRestore}`, 'success');
+                        setTimeout(() => {
+                            if (selectedProject) fetchHistory(selectedProject.id);
+                        }, 2000);
+                    } else {
+                        const err = await response.json();
+                        showToast(`Erreur : ${err.message}`, "error");
+                        addDiagnosticLog(`Échec de la restauration depuis fichier : ${err.message}`, 'error');
+                    }
+                } catch (e) {
+                    showToast("Erreur lors de l'appel de restauration", "error");
+                    addDiagnosticLog(`Erreur de restauration : ${e.message}`, 'error');
+                } finally {
+                    hideLoadingSpinner();
+                }
+            } else {
+                // Restauration classique depuis un ID historique
+                const historyId = typeof selectedHistoryItemToRestore === 'object' ? selectedHistoryItemToRestore.id : selectedHistoryItemToRestore;
+                showLoadingSpinner("Restauration depuis l'historique en cours...");
+                try {
+                    const response = await fetch(`${API_BASE_URL}/historique/${historyId}/restaurer/`, {
+                        method: 'POST'
+                    });
+                    if (response.ok) {
+                        showToast("Restauration depuis l'historique lancée en arrière-plan !");
+                        addDiagnosticLog(`Restauration lancée pour le projet ${selectedProject.nom_projet} depuis l'historique ID ${historyId}`, 'success');
+                        setTimeout(() => {
+                            if (selectedProject) fetchHistory(selectedProject.id);
+                        }, 2000);
+                    } else {
+                        const err = await response.json();
+                        showToast(`Erreur : ${err.message}`, "error");
+                        addDiagnosticLog(`Échec de la restauration depuis l'historique : ${err.message}`, 'error');
+                    }
+                } catch (e) {
+                    showToast("Erreur lors de l'appel de restauration", "error");
+                    addDiagnosticLog(`Erreur de restauration : ${e.message}`, 'error');
+                } finally {
+                    hideLoadingSpinner();
+                }
+            }
+        });
+
+        // --- SPINNER ---
+        function showLoadingSpinner(text) {
+            loadingTextContent.textContent = text;
+            loadingSpinner.style.display = 'flex';
+        }
+
+        function hideLoadingSpinner() {
+            loadingSpinner.style.display = 'none';
+        }
+
+        // --- LOGS DE DIAGNOSTIC ---
+        const logPanel = document.getElementById('log-panel');
+        const logHeader = document.getElementById('log-header');
+        const logTerminal = document.getElementById('log-terminal');
+        const btnClearLogs = document.getElementById('btn-clear-logs');
+        const btnCopyLogs = document.getElementById('btn-copy-logs');
+
+        // Toggle Accordéon
+        logHeader.addEventListener('click', () => {
+            logPanel.classList.toggle('expanded');
+        });
+
+        // Ajouter un log à l'écran
+        function appendLog(logItem) {
+            const dateStr = new Date(logItem.timestamp).toLocaleTimeString('fr-FR');
+            
+            const logLine = document.createElement('div');
+            logLine.className = 'log-line';
+            
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'log-time';
+            timeSpan.textContent = `[${dateStr}]`;
+            logLine.appendChild(timeSpan);
+            
+            const textSpan = document.createElement('span');
+            textSpan.className = `log-type-${logItem.type || 'info'}`;
+            textSpan.textContent = logItem.message;
+            logLine.appendChild(textSpan);
+            
+            logTerminal.appendChild(logLine);
+            logTerminal.scrollTop = logTerminal.scrollHeight;
+        }
+
+        // Effacer les logs
+        btnClearLogs.addEventListener('click', () => {
+            logTerminal.innerHTML = '';
+            addDiagnosticLog("Journaux effacés.", "info");
+        });
+
+        // Copier les logs
+        btnCopyLogs.addEventListener('click', () => {
+            const text = logTerminal.innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast("Logs copiés dans le presse-papier !");
+            }).catch(err => {
+                showToast("Erreur lors de la copie", "error");
+            });
+        });
+
+        function addDiagnosticLog(message, type = 'info') {
+            appendLog({
+                timestamp: new Date().toISOString(),
+                message: message,
+                type: type
+            });
+        }
+
+        ipcRenderer.on('app-log', (event, logItem) => {
+            appendLog(logItem);
+        });
+
+        // Charger les anciens logs au démarrage
+        try {
+            const initialLogs = ipcRenderer.sendSync('request-logs');
+            if (initialLogs && Array.isArray(initialLogs)) {
+                initialLogs.forEach(appendLog);
+            }
+        } catch (e) {
+            console.error("Impossible de récupérer les logs initiaux", e);
+        }
+
+        addDiagnosticLog("Console de diagnostic initialisée. En attente du serveur...", "info");
+
+        // Démarrage
+        fetchAllProjects();
+        
+        // Rafraîchir régulièrement l'historique
+        setInterval(() => {
+            if (selectedProject) {
+                fetchHistory(selectedProject.id);
+            }
+        }, 15000);
+    </script>
+</body>
+</html>
