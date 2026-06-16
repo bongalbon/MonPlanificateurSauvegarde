@@ -170,6 +170,159 @@ def download_from_onedrive(token, file_id, dest_path):
 
 # --- MAIN ACTIONS ---
 
+def _restore_postgresql_robust(project, dump_file_path, dump_file_name, logger_accum):
+    """
+    Restaure une base de données PostgreSQL de manière robuste en fermant les connexions
+    et en épurant les directives incompatibles pour les versions de postgres inférieures.
+    """
+    host = project.db_host or "localhost"
+    port = project.db_port or "5432"
+    name = project.db_name
+    user = project.db_user
+    password = project.db_password
+    
+    psql_path = find_pg_binary('psql')
+    if not psql_path:
+        logger_accum.log("L'utilitaire psql est introuvable sur le système.")
+        return False
+        
+    env = os.environ.copy()
+    if password:
+        env["PGPASSWORD"] = password
+    env["PGCLIENTENCODING"] = "UTF8"
+    env["USERNAME"] = user
+    env["USER"] = user
+
+    # 1. Fermeture forcée des connexions concurrentes
+    logger_accum.log("Fermeture forcée des connexions concurrentes...")
+    terminate_sql = f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{name}' AND pid <> pg_backend_pid();"
+    terminate_cmd = [
+        psql_path, "-h", str(host), "-p", str(port), "-U", str(user), "-d", "postgres", "-v", "ON_ERROR_STOP=0", "-c", terminate_sql
+    ]
+    try:
+        subprocess.run(terminate_cmd, env=env, capture_output=True, text=True, timeout=20)
+    except Exception as e:
+        logger_accum.log(f"Avertissement (fermeture connexions) : {e}")
+
+    import time
+    time.sleep(1)
+
+    # Si c'est un fichier binaire .dump, on doit utiliser pg_restore directement
+    if dump_file_name.endswith('.dump'):
+        logger_accum.log("Restauration du dump binaire via pg_restore...")
+        pg_restore_path = find_pg_binary('pg_restore')
+        if not pg_restore_path:
+            logger_accum.log("L'utilitaire pg_restore est introuvable.")
+            return False
+            
+        cmd = [
+            pg_restore_path,
+            '-h', str(host),
+            '-p', str(port),
+            '-U', str(user),
+            '-d', str(name),
+            '--clean',
+            '--if-exists',
+            '-v',
+            dump_file_path
+        ]
+        
+        process = subprocess.run(
+            cmd, 
+            env=env, 
+            capture_output=True, 
+            text=True, 
+            encoding='utf-8', 
+            errors='ignore',
+            timeout=300
+        )
+        if process.returncode != 0:
+            logger_accum.log(f"Erreur pg_restore (code {process.returncode}):\n{process.stderr}")
+            return False
+        return True
+
+    # 2. Préparation du schéma de base propre (pour plain SQL)
+    logger_accum.log("Réinitialisation du schéma public...")
+    cleanup_sql = "SET client_encoding = 'UTF8';\nDROP SCHEMA public CASCADE;\nCREATE SCHEMA public;\nGRANT ALL ON SCHEMA public TO public;\n"
+
+    # 3. Traitement et filtrage de sécurité du fichier SQL de dump (directives incompatibles)
+    try:
+        with open(dump_file_path, "rb") as f:
+            backup_content = f.read()
+    except Exception as e:
+        logger_accum.log(f"Lecture du fichier dump impossible : {e}")
+        return False
+
+    try:
+        backup_text = backup_content.decode("utf-8", errors="ignore")
+        lines = backup_text.split("\n")
+        cleaned_lines = []
+        
+        unsupported_params = [
+            "transaction_timeout", "idle_session_timeout", 
+            "idle_in_transaction_session_timeout", "wal_compression", "logical_decoding_work_mem"
+        ]
+        
+        for line in lines:
+            line_stripped = line.strip().upper()
+            should_skip = False
+            if line_stripped.startswith("SET "):
+                for param in unsupported_params:
+                    if f" {param.upper()} " in line_stripped or line_stripped.endswith(f" {param.upper()}"):
+                        should_skip = True
+                        break
+            if not should_skip:
+                cleaned_lines.append(line)
+        cleaned_content = "\n".join(cleaned_lines).encode("utf-8")
+    except Exception as e:
+        logger_accum.log(f"Erreur lors du filtrage du dump : {e}. Utilisation du fichier d'origine.")
+        cleaned_content = backup_content
+
+    full_content = cleanup_sql.encode("utf-8") + b"\n" + cleaned_content
+
+    # 4. Écriture du flux épuré
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".sql", delete=False) as tmp:
+        tmp.write(full_content)
+        tmp_path = tmp.name
+
+    try:
+        # 5. Injection via psql avec tolérance aux erreurs mineures
+        logger_accum.log("Restauration du script SQL via psql...")
+        cmd = [
+            psql_path, "-h", str(host), "-p", str(port), "-U", str(user), "-d", str(name), "-v", "ON_ERROR_STOP=0", "-f", tmp_path
+        ]
+        
+        result = subprocess.run(
+            cmd, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300
+        )
+        
+        # 6. Évaluation stricte des erreurs critiques renvoyées
+        combined_output = (result.stderr or "").lower() + "\n" + (result.stdout or "").lower()
+        critical_errors = [
+            "permission denied", "could not open file", "out of memory", 
+            "disk full", "connection refused", "authentication failed", 
+            "database does not exist", "role does not exist", "fe_sendauth"
+        ]
+        
+        if any(err in combined_output for err in critical_errors):
+            logger_accum.log(f"Erreur critique lors de la restauration :\n{result.stderr or result.stdout}")
+            return False
+
+        return True
+
+    except subprocess.TimeoutExpired:
+        logger_accum.log("Le délai d'attente pour la restauration SQL a expiré.")
+        return False
+    except Exception as e:
+        logger_accum.log(f"Erreur fatale d'exécution : {str(e)}")
+        return False
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+
 def executer_sauvegarde_projet(projet_id):
     """Génère le dump DB + Zip Médias et distribue vers les destinations configurées."""
     logger_accum = LogAccumulator()
@@ -185,8 +338,7 @@ def executer_sauvegarde_projet(projet_id):
         return None
         
     try:
-        temp_dir = tempfile.mkdtemp()
-        dump_filename = "db_dump.dump"
+        dump_filename = "db.sql"
         temp_dump_file = os.path.join(temp_dir, dump_filename)
         
         # 1. Génération du dump PostgreSQL
@@ -198,7 +350,10 @@ def executer_sauvegarde_projet(projet_id):
             '-h', project.db_host,
             '-p', project.db_port,
             '-U', project.db_user,
-            '-F', 'c',  # Format d'archive personnalisé PostgreSQL
+            '-F', 'p',  # Plain SQL format
+            '--clean',
+            '--if-exists',
+            '--encoding=UTF8',
             '-b',
             '-v',
             '-f', temp_dump_file,
@@ -361,7 +516,12 @@ def executer_restoration_projet(historique_id):
             raise Exception("Aucune archive n'est associée à cet historique.")
             
         temp_dir = tempfile.mkdtemp()
-        local_zip_path = os.path.join(temp_dir, "backup.zip")
+        
+        ext = os.path.splitext(archive_uri)[1].lower() if archive_uri else ".zip"
+        if not ext:
+            ext = ".zip"
+            
+        local_file_path = os.path.join(temp_dir, f"backup{ext}")
         
         # 1. Récupération de l'archive
         logger_accum.log(f"Récupération de l'archive depuis {archive_uri}...")
@@ -371,7 +531,7 @@ def executer_restoration_projet(historique_id):
             gdrive_dest = project.destinations.filter(type_destination='gdrive').first()
             if not gdrive_dest or not gdrive_dest.token_auth_cloud:
                 raise Exception("Token Google Drive configuré requis pour télécharger le fichier.")
-            download_from_gdrive(gdrive_dest.token_auth_cloud, file_id, local_zip_path)
+            download_from_gdrive(gdrive_dest.token_auth_cloud, file_id, local_file_path)
             logger_accum.log("Archive téléchargée de Google Drive avec succès.")
             
         elif archive_uri.startswith("onedrive://"):
@@ -379,113 +539,82 @@ def executer_restoration_projet(historique_id):
             onedrive_dest = project.destinations.filter(type_destination='onedrive').first()
             if not onedrive_dest or not onedrive_dest.token_auth_cloud:
                 raise Exception("Token OneDrive configuré requis pour télécharger le fichier.")
-            download_from_onedrive(onedrive_dest.token_auth_cloud, file_id, local_zip_path)
+            download_from_onedrive(onedrive_dest.token_auth_cloud, file_id, local_file_path)
             logger_accum.log("Archive téléchargée de OneDrive avec succès.")
             
         else:
             # Traiter comme un chemin local standard
             if not os.path.exists(archive_uri):
                 raise Exception(f"L'archive locale spécifiée n'existe pas : {archive_uri}")
-            shutil.copy2(archive_uri, local_zip_path)
+            shutil.copy2(archive_uri, local_file_path)
             logger_accum.log("Copie de l'archive locale terminée.")
             
-        # 2. Décompression
-        extracted_dir = os.path.join(temp_dir, "extracted")
-        os.makedirs(extracted_dir, exist_ok=True)
-        logger_accum.log("Décompression de l'archive...")
-        with zipfile.ZipFile(local_zip_path, 'r') as zipf:
-            zipf.extractall(extracted_dir)
-            
-        # Trouver le dump de la base
-        dump_files = [f for f in os.listdir(extracted_dir) if f.endswith('.dump') or f.endswith('.sql')]
-        if not dump_files:
-            raise Exception("Aucun fichier dump (.dump/.sql) trouvé dans l'archive.")
-            
-        dump_file_name = dump_files[0]
-        dump_file_path = os.path.join(extracted_dir, dump_file_name)
-        logger_accum.log(f"Fichier de dump base détecté : {dump_file_name}")
-        
-        # 3. Lancement de la restauration PostgreSQL
-        logger_accum.log(f"Restauration de la base '{project.db_name}'...")
-        env = os.environ.copy()
-        env['PGPASSWORD'] = project.db_password
-        
-        if dump_file_name.endswith('.dump'):
-            pg_restore_path = find_pg_binary('pg_restore')
-            cmd = [
-                pg_restore_path,
-                '-h', project.db_host,
-                '-p', project.db_port,
-                '-U', project.db_user,
-                '-d', project.db_name,
-                '--clean',
-                '--if-exists',
-                '-v',
-                dump_file_path
-            ]
-        else:
-            psql_path = find_pg_binary('psql')
-            cmd = [
-                psql_path,
-                '-h', project.db_host,
-                '-p', project.db_port,
-                '-U', project.db_user,
-                '-d', project.db_name,
-                '-f', dump_file_path
-            ]
-            
-        process = subprocess.run(
-            cmd, 
-            env=env, 
-            capture_output=True, 
-            text=True, 
-            encoding='utf-8', 
-            errors='ignore'
-        )
-        
-        # pg_restore écrit la progression verbeuse dans stderr, le code retour est donc le seul indicateur fiable.
-        if process.returncode != 0:
-            error_msg = f"Erreur lors de la restauration SQL (code {process.returncode}):\n{process.stderr}"
-            logger_accum.log(error_msg)
-            raise Exception("La restauration de la base de données a échoué.")
-            
-        logger_accum.log("Restauration de la base de données terminée avec succès.")
-        
-        # 4. Restauration du dossier média local
-        extracted_media = os.path.join(extracted_dir, 'media')
-        target_media = project.chemin_media_local
-        
-        if os.path.exists(extracted_media):
-            logger_accum.log(f"Restauration du dossier média vers '{target_media}'...")
-            
-            # Vider proprement le dossier média cible
-            if os.path.exists(target_media):
-                logger_accum.log("Nettoyage du répertoire média existant...")
-                for item in os.listdir(target_media):
-                    item_path = os.path.join(target_media, item)
-                    try:
-                        if os.path.isdir(item_path):
-                            shutil.rmtree(item_path)
-                        else:
-                            os.remove(item_path)
-                    except Exception as err:
-                        logger_accum.log(f"Avertissement lors de la suppression de {item_path} : {str(err)}")
-            else:
-                os.makedirs(target_media, exist_ok=True)
+        if ext == ".zip":
+            # 2. Décompression
+            extracted_dir = os.path.join(temp_dir, "extracted")
+            os.makedirs(extracted_dir, exist_ok=True)
+            logger_accum.log("Décompression de l'archive...")
+            with zipfile.ZipFile(local_file_path, 'r') as zipf:
+                zipf.extractall(extracted_dir)
                 
-            # Recopier les fichiers extraits
-            count = 0
-            for item in os.listdir(extracted_media):
-                src_path = os.path.join(extracted_media, item)
-                dest_path = os.path.join(target_media, item)
-                if os.path.isdir(src_path):
-                    shutil.copytree(src_path, dest_path)
+            # Trouver le dump de la base
+            dump_files = [f for f in os.listdir(extracted_dir) if f.endswith('.dump') or f.endswith('.sql')]
+            if not dump_files:
+                raise Exception("Aucun fichier dump (.dump/.sql) trouvé dans l'archive.")
+                
+            dump_file_name = dump_files[0]
+            dump_file_path = os.path.join(extracted_dir, dump_file_name)
+            logger_accum.log(f"Fichier de dump base détecté : {dump_file_name}")
+            
+            # 3. Lancement de la restauration PostgreSQL
+            logger_accum.log(f"Restauration de la base '{project.db_name}'...")
+            success = _restore_postgresql_robust(project, dump_file_path, dump_file_name, logger_accum)
+            if not success:
+                raise Exception("La restauration de la base de données a échoué.")
+            logger_accum.log("Restauration de la base de données terminée avec succès.")
+            
+            # 4. Restauration du dossier média local
+            extracted_media = os.path.join(extracted_dir, 'media')
+            target_media = project.chemin_media_local
+            
+            if os.path.exists(extracted_media):
+                logger_accum.log(f"Restauration du dossier média vers '{target_media}'...")
+                
+                # Vider proprement le dossier média cible
+                if os.path.exists(target_media):
+                    logger_accum.log("Nettoyage du répertoire média existant...")
+                    for item in os.listdir(target_media):
+                        item_path = os.path.join(target_media, item)
+                        try:
+                            if os.path.isdir(item_path):
+                                shutil.rmtree(item_path)
+                            else:
+                                os.remove(item_path)
+                        except Exception as err:
+                            logger_accum.log(f"Avertissement lors de la suppression de {item_path} : {str(err)}")
                 else:
-                    shutil.copy2(src_path, dest_path)
-                count += 1
-            logger_accum.log(f"Restauration des médias terminée. {count} fichiers copiés.")
+                    os.makedirs(target_media, exist_ok=True)
+                    
+                # Recopier les fichiers extraits
+                count = 0
+                for item in os.listdir(extracted_media):
+                    src_path = os.path.join(extracted_media, item)
+                    dest_path = os.path.join(target_media, item)
+                    if os.path.isdir(src_path):
+                        shutil.copytree(src_path, dest_path)
+                    else:
+                        shutil.copy2(src_path, dest_path)
+                    count += 1
+                logger_accum.log(f"Restauration des médias terminée. {count} fichiers copiés.")
+            else:
+                logger_accum.log("Aucune sauvegarde de média présente dans l'archive. Restauration média sautée.")
         else:
-            logger_accum.log("Aucune sauvegarde de média présente dans l'archive. Restauration média sautée.")
+            # SQL ou DUMP brut
+            logger_accum.log(f"Restauration directe du dump brut ({ext})...")
+            success = _restore_postgresql_robust(project, local_file_path, f"database{ext}", logger_accum)
+            if not success:
+                raise Exception("La restauration de la base de données a échoué.")
+            logger_accum.log("Restauration de la base de données terminée avec succès. (Médias ignorés car dump brut)")
             
         logger_accum.log("Procédure de restauration globale terminée avec succès.")
         restore_history.statut = 'succes'
@@ -537,105 +666,80 @@ def executer_restoration_projet_depuis_fichier(projet_id, zip_file_path):
             raise Exception(f"Le fichier d'archive spécifié n'existe pas: {zip_file_path}")
             
         temp_dir = tempfile.mkdtemp()
-        local_zip_path = os.path.join(temp_dir, "backup.zip")
+        
+        ext = os.path.splitext(zip_file_path)[1].lower() if zip_file_path else ".zip"
+        if not ext:
+            ext = ".zip"
+            
+        local_file_path = os.path.join(temp_dir, f"backup{ext}")
         
         # Copier vers le dossier temporaire
-        shutil.copy2(zip_file_path, local_zip_path)
+        shutil.copy2(zip_file_path, local_file_path)
         logger_accum.log("Fichier copié vers l'espace temporaire.")
         
-        # Décompresser
-        extracted_dir = os.path.join(temp_dir, "extracted")
-        os.makedirs(extracted_dir, exist_ok=True)
-        logger_accum.log("Décompression de l'archive...")
-        with zipfile.ZipFile(local_zip_path, 'r') as zipf:
-            zipf.extractall(extracted_dir)
-            
-        # Trouver le dump
-        dump_files = [f for f in os.listdir(extracted_dir) if f.endswith('.dump') or f.endswith('.sql')]
-        if not dump_files:
-            raise Exception("Aucun fichier dump (.dump/.sql) trouvé dans l'archive.")
-            
-        dump_file_name = dump_files[0]
-        dump_file_path = os.path.join(extracted_dir, dump_file_name)
-        logger_accum.log(f"Fichier de dump base détecté : {dump_file_name}")
-        
-        # Restauration DB
-        logger_accum.log(f"Restauration de la base '{project.db_name}'...")
-        env = os.environ.copy()
-        env['PGPASSWORD'] = project.db_password
-        
-        if dump_file_name.endswith('.dump'):
-            pg_restore_path = find_pg_binary('pg_restore')
-            cmd = [
-                pg_restore_path,
-                '-h', project.db_host,
-                '-p', project.db_port,
-                '-U', project.db_user,
-                '-d', project.db_name,
-                '--clean',
-                '--if-exists',
-                '-v',
-                dump_file_path
-            ]
-        else:
-            psql_path = find_pg_binary('psql')
-            cmd = [
-                psql_path,
-                '-h', project.db_host,
-                '-p', project.db_port,
-                '-U', project.db_user,
-                '-d', project.db_name,
-                '-f', dump_file_path
-            ]
-            
-        process = subprocess.run(
-            cmd, 
-            env=env, 
-            capture_output=True, 
-            text=True, 
-            encoding='utf-8', 
-            errors='ignore'
-        )
-        
-        if process.returncode != 0:
-            error_msg = f"Erreur lors de la restauration SQL (code {process.returncode}):\n{process.stderr}"
-            logger_accum.log(error_msg)
-            raise Exception("La restauration de la base de données a échoué.")
-            
-        logger_accum.log("Restauration de la base de données terminée avec succès.")
-        
-        # Restauration Médias
-        extracted_media = os.path.join(extracted_dir, 'media')
-        target_media = project.chemin_media_local
-        
-        if os.path.exists(extracted_media):
-            logger_accum.log(f"Restauration du dossier média vers '{target_media}'...")
-            if os.path.exists(target_media):
-                logger_accum.log("Nettoyage du répertoire média existant...")
-                for item in os.listdir(target_media):
-                    item_path = os.path.join(target_media, item)
-                    try:
-                        if os.path.isdir(item_path):
-                            shutil.rmtree(item_path)
-                        else:
-                            os.remove(item_path)
-                    except Exception as err:
-                        logger_accum.log(f"Avertissement lors de la suppression de {item_path} : {str(err)}")
-            else:
-                os.makedirs(target_media, exist_ok=True)
+        if ext == ".zip":
+            # Décompresser
+            extracted_dir = os.path.join(temp_dir, "extracted")
+            os.makedirs(extracted_dir, exist_ok=True)
+            logger_accum.log("Décompression de l'archive...")
+            with zipfile.ZipFile(local_file_path, 'r') as zipf:
+                zipf.extractall(extracted_dir)
                 
-            count = 0
-            for item in os.listdir(extracted_media):
-                src_path = os.path.join(extracted_media, item)
-                dest_path = os.path.join(target_media, item)
-                if os.path.isdir(src_path):
-                    shutil.copytree(src_path, dest_path)
+            # Trouver le dump
+            dump_files = [f for f in os.listdir(extracted_dir) if f.endswith('.dump') or f.endswith('.sql')]
+            if not dump_files:
+                raise Exception("Aucun fichier dump (.dump/.sql) trouvé dans l'archive.")
+                
+            dump_file_name = dump_files[0]
+            dump_file_path = os.path.join(extracted_dir, dump_file_name)
+            logger_accum.log(f"Fichier de dump base détecté : {dump_file_name}")
+            
+            # Restauration DB
+            logger_accum.log(f"Restauration de la base '{project.db_name}'...")
+            success = _restore_postgresql_robust(project, dump_file_path, dump_file_name, logger_accum)
+            if not success:
+                raise Exception("La restauration de la base de données a échoué.")
+            logger_accum.log("Restauration de la base de données terminée avec succès.")
+            
+            # Restauration Médias
+            extracted_media = os.path.join(extracted_dir, 'media')
+            target_media = project.chemin_media_local
+            
+            if os.path.exists(extracted_media):
+                logger_accum.log(f"Restauration du dossier média vers '{target_media}'...")
+                if os.path.exists(target_media):
+                    logger_accum.log("Nettoyage du répertoire média existant...")
+                    for item in os.listdir(target_media):
+                        item_path = os.path.join(target_media, item)
+                        try:
+                            if os.path.isdir(item_path):
+                                shutil.rmtree(item_path)
+                            else:
+                                os.remove(item_path)
+                        except Exception as err:
+                            logger_accum.log(f"Avertissement lors de la suppression de {item_path} : {str(err)}")
                 else:
-                    shutil.copy2(src_path, dest_path)
-                count += 1
-            logger_accum.log(f"Restauration des médias terminée. {count} fichiers copiés.")
+                    os.makedirs(target_media, exist_ok=True)
+                    
+                count = 0
+                for item in os.listdir(extracted_media):
+                    src_path = os.path.join(extracted_media, item)
+                    dest_path = os.path.join(target_media, item)
+                    if os.path.isdir(src_path):
+                        shutil.copytree(src_path, dest_path)
+                    else:
+                        shutil.copy2(src_path, dest_path)
+                    count += 1
+                logger_accum.log(f"Restauration des médias terminée. {count} fichiers copiés.")
+            else:
+                logger_accum.log("Aucune sauvegarde de média présente dans l'archive. Restauration média sautée.")
         else:
-            logger_accum.log("Aucune sauvegarde de média présente dans l'archive. Restauration média sautée.")
+            # SQL ou DUMP brut
+            logger_accum.log(f"Restauration directe du dump brut ({ext})...")
+            success = _restore_postgresql_robust(project, local_file_path, f"database{ext}", logger_accum)
+            if not success:
+                raise Exception("La restauration de la base de données a échoué.")
+            logger_accum.log("Restauration de la base de données terminée avec succès. (Médias ignorés car dump brut)")
             
         logger_accum.log("Procédure de restauration globale terminée avec succès.")
         restore_history.statut = 'succes'

@@ -39,13 +39,15 @@ ipcMain.on('request-logs', (event) => {
 
 // Configurer le démarrage automatique avec Windows (en arrière-plan dans le systray)
 function setupAutostart() {
-    if (process.platform === 'win32') {
+    if (app.isPackaged && process.platform === 'win32') {
         app.setLoginItemSettings({
             openAtLogin: true,
             path: app.getPath('exe'),
             args: ['--hidden']
         });
         sendAppLog("Configuration du démarrage Windows (mode Systray) configurée.", "info");
+    } else {
+        sendAppLog("Démarrage automatique ignoré en mode de développement.", "info");
     }
 }
 
@@ -199,19 +201,26 @@ function updateTrayMenu() {
 
 // Créer le Systray
 function createTray() {
-    const { nativeImage } = require('electron');
-    const iconPath = path.join(__dirname, 'build', 'icon.png');
-    let icon;
-    
-    if (fs.existsSync(iconPath)) {
-        icon = nativeImage.createFromPath(iconPath);
-        sendAppLog("Icône Systray chargée depuis build/icon.png", "info");
-    } else {
-        icon = nativeImage.createEmpty();
-        sendAppLog("Icône Systray non trouvée (build/icon.png manquant). Utilisation d'une icône vide.", "warn");
+    let iconPath = path.join(__dirname, 'build', 'icon.ico');
+    if (process.platform !== 'win32' || !fs.existsSync(iconPath)) {
+        iconPath = path.join(__dirname, 'build', 'icon.png');
     }
     
-    tray = new Tray(icon);
+    if (fs.existsSync(iconPath)) {
+        try {
+            tray = new Tray(iconPath);
+            sendAppLog(`Icône Systray chargée depuis ${path.basename(iconPath)}`, "info");
+        } catch (e) {
+            console.error("Erreur chargement icône systray:", e);
+            const { nativeImage } = require('electron');
+            tray = new Tray(nativeImage.createEmpty());
+        }
+    } else {
+        const { nativeImage } = require('electron');
+        tray = new Tray(nativeImage.createEmpty());
+        sendAppLog("Icône Systray non trouvée. Utilisation d'une icône vide.", "warn");
+    }
+    
     updateTrayMenu();
     
     // Mettre à jour la liste des projets toutes les 15 secondes
@@ -220,7 +229,10 @@ function createTray() {
 
 // Créer la fenêtre principale
 function createWindow() {
-    const iconPath = path.join(__dirname, 'build', 'icon.png');
+    let iconPath = path.join(__dirname, 'build', 'icon.ico');
+    if (process.platform !== 'win32' || !fs.existsSync(iconPath)) {
+        iconPath = path.join(__dirname, 'build', 'icon.png');
+    }
     const hasIcon = fs.existsSync(iconPath);
     
     mainWindow = new BrowserWindow({
@@ -239,8 +251,13 @@ function createWindow() {
     mainWindow.loadFile('index.html');
     
     mainWindow.once('ready-to-show', () => {
-        if (!isHidden) {
+        const isHiddenAtStart = process.argv.includes('--hidden') || 
+                                process.argv.includes('--open-as-hidden') || 
+                                (app.isPackaged && app.getLoginItemSettings().wasOpenedAsHidden);
+        if (!isHiddenAtStart) {
             mainWindow.show();
+        } else {
+            sendAppLog("Démarrage en mode caché (arrière-plan).", "info");
         }
     });
     
