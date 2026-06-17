@@ -55,13 +55,39 @@ function setupAutostart() {
 function spawnDjango() {
     const pythonPath = path.join(__dirname, '..', 'venv', 'Scripts', 'python.exe');
     const managePyPath = path.join(__dirname, '..', 'manage.py');
+    const dbSourcePath = path.join(__dirname, '..', 'db.sqlite3');
     
     const exePath = fs.existsSync(pythonPath) ? pythonPath : 'python';
     
+    let dbPath = dbSourcePath;
+    if (app.isPackaged) {
+        const userDataPath = app.getPath('userData');
+        const destDbPath = path.join(userDataPath, 'db.sqlite3');
+        try {
+            if (!fs.existsSync(destDbPath)) {
+                if (fs.existsSync(dbSourcePath)) {
+                    fs.copyFileSync(dbSourcePath, destDbPath);
+                    sendAppLog(`Base de données initialisée dans le dossier utilisateur : ${destDbPath}`, "info");
+                } else {
+                    sendAppLog(`Fichier source db.sqlite3 introuvable : ${dbSourcePath}`, "warn");
+                }
+            }
+            dbPath = destDbPath;
+        } catch (err) {
+            sendAppLog(`Impossible de copier db.sqlite3 dans le dossier utilisateur : ${err.message}. Utilisation directe.`, "warn");
+        }
+    }
+    
     sendAppLog(`Tentative de démarrage de Django avec : ${exePath} (manage.py = ${managePyPath})`, "info");
     
+    const env = { 
+        ...process.env, 
+        DJANGO_DB_PATH: dbPath 
+    };
+    
     djangoProcess = spawn(exePath, [managePyPath, 'runserver', '127.0.0.1:8000', '--noreload'], {
-        windowsHide: true
+        windowsHide: true,
+        env: env
     });
     
     djangoProcess.stdout.on('data', (data) => {
