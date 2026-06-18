@@ -901,8 +901,9 @@
                     fetchHistory(selectedProject.id);
                 } else {
                     const errRes = await response.json();
+                    const detail = errRes.log ? `\nDétails : ${errRes.log}` : '';
                     showToast(`Échec : ${errRes.message || 'Erreur serveur'}`, "error");
-                    addDiagnosticLog(`Échec de sauvegarde manuelle pour le projet ${selectedProject.nom_projet} : ${errRes.message || 'Erreur serveur'}`, 'error');
+                    addDiagnosticLog(`Échec de sauvegarde manuelle pour le projet ${selectedProject.nom_projet} : ${errRes.message || 'Erreur serveur'}${detail}`, 'error');
                 }
             } catch (err) {
                 showToast("Erreur de contact avec le serveur", "error");

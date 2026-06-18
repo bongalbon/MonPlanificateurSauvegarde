@@ -20,17 +20,21 @@
     "productName": "BackupAndRestaureApp",
     "appId": "com.backupandrestaure.app",
     "win": {
-      "icon": "build/icon.ico",
+      "icon": "assets/icon.ico",
       "target": "nsis"
     },
     "nsis": {
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
       "shortcutName": "BackupAndRestaureApp",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
     },
+    "files": [
+      "**/*",
+      "assets/*"
+    ],
     "extraResources": [
       {
         "from": "../core",

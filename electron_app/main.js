@@ -23,7 +23,7 @@ function sendAppLog(message, type = 'info') {
         logQueue.shift();
     }
     
-    if (mainWindow && mainWindow.webContents) {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents) {
         try {
             mainWindow.webContents.send('app-log', logItem);
         } catch (e) {
@@ -243,9 +243,9 @@ function updateTrayMenu() {
 
 // Créer le Systray
 function createTray() {
-    let iconPath = path.join(__dirname, 'build', 'icon.ico');
+    let iconPath = path.join(__dirname, 'assets', 'icon.ico');
     if (process.platform !== 'win32' || !fs.existsSync(iconPath)) {
-        iconPath = path.join(__dirname, 'build', 'icon.png');
+        iconPath = path.join(__dirname, 'assets', 'icon.png');
     }
     
     if (fs.existsSync(iconPath)) {
@@ -271,9 +271,9 @@ function createTray() {
 
 // Créer la fenêtre principale
 function createWindow() {
-    let iconPath = path.join(__dirname, 'build', 'icon.ico');
+    let iconPath = path.join(__dirname, 'assets', 'icon.ico');
     if (process.platform !== 'win32' || !fs.existsSync(iconPath)) {
-        iconPath = path.join(__dirname, 'build', 'icon.png');
+        iconPath = path.join(__dirname, 'assets', 'icon.png');
     }
     const hasIcon = fs.existsSync(iconPath);
     
@@ -313,31 +313,46 @@ function createWindow() {
     });
 }
 
-app.on('ready', () => {
-    spawnDjango();
-    setupAutostart();
-    createWindow();
-    // Laisser au backend Django le temps de démarrer avant d'appeler l'API pour le plateau système
-    setTimeout(createTray, 2000);
-});
+const gotTheLock = app.requestSingleInstanceLock();
 
-app.on('will-quit', () => {
-    if (djangoProcess) {
-        djangoProcess.kill();
-    }
-});
+if (!gotTheLock) {
+    app.quit();
+} else {
+    app.on('second-instance', (event, commandLine, workingDirectory) => {
+        // Focus the main window if the user tried to open another instance
+        if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            if (!mainWindow.isVisible()) mainWindow.show();
+            mainWindow.focus();
+        }
+    });
 
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
-
-app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    app.on('ready', () => {
+        spawnDjango();
+        setupAutostart();
         createWindow();
-    }
-});
+        // Laisser au backend Django le temps de démarrer avant d'appeler l'API pour le plateau système
+        setTimeout(createTray, 2000);
+    });
+
+    app.on('will-quit', () => {
+        if (djangoProcess) {
+            djangoProcess.kill();
+        }
+    });
+
+    app.on('window-all-closed', () => {
+        if (process.platform !== 'darwin') {
+            app.quit();
+        }
+    });
+
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+            createWindow();
+        }
+    });
+}
 
 // IPC : Sélecteurs de répertoires natifs
 ipcMain.on('select-media-folder', (event) => {
