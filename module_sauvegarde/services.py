@@ -28,12 +28,21 @@ class LogAccumulator:
 
 def find_pg_binary(binary_name):
     """Recherche les binaires de PostgreSQL dans le PATH ou dans les répertoires standards sous Windows."""
-    # 1. Essai avec shutil.which (si dans le PATH)
+    # 1. Essai dans le dossier portable APPDATA (utilisé par budget_ctd et grh_ctd)
+    import platform
+    if platform.system() == 'Windows':
+        appdata = os.environ.get('APPDATA')
+        if appdata:
+            portable_path = os.path.join(appdata, 'SIELABUC-Tech', 'pgsql', 'bin', f"{binary_name}.exe")
+            if os.path.exists(portable_path):
+                return portable_path
+
+    # 2. Essai avec shutil.which (si dans le PATH)
     path_bin = shutil.which(binary_name)
     if path_bin:
         return path_bin
     
-    # 2. Recherche dans les dossiers par défaut de Windows
+    # 3. Recherche dans les dossiers par défaut de Windows
     possible_dirs = [
         r"C:\Program Files\PostgreSQL",
         r"C:\Program Files (x86)\PostgreSQL",

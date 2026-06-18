@@ -40,16 +40,32 @@ ipcMain.on('request-logs', (event) => {
 // Configurer le démarrage automatique avec Windows (en arrière-plan dans le systray)
 function setupAutostart() {
     if (app.isPackaged && process.platform === 'win32') {
-        app.setLoginItemSettings({
-            openAtLogin: true,
-            path: app.getPath('exe'),
-            args: ['--hidden']
-        });
-        sendAppLog("Configuration du démarrage Windows (mode Systray) configurée.", "info");
+        const currentSettings = app.getLoginItemSettings();
+        sendAppLog(`Démarrage Windows (mode Systray) est actuellement ${currentSettings.openAtLogin ? 'actif' : 'inactif'}.`, "info");
     } else {
         sendAppLog("Démarrage automatique ignoré en mode de développement.", "info");
     }
 }
+
+// IPC Handlers pour la gestion de l'autostart
+ipcMain.on('get-autostart-status', (event) => {
+    if (process.platform === 'win32') {
+        event.returnValue = app.getLoginItemSettings().openAtLogin;
+    } else {
+        event.returnValue = false;
+    }
+});
+
+ipcMain.on('set-autostart', (event, enable) => {
+    if (process.platform === 'win32') {
+        app.setLoginItemSettings({
+            openAtLogin: enable,
+            path: app.getPath('exe'),
+            args: ['--hidden']
+        });
+        sendAppLog(`Démarrage automatique Windows défini sur : ${enable}`, "info");
+    }
+});
 
 // Lancer le backend Django
 function spawnDjango() {

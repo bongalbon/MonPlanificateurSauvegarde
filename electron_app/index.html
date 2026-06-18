@@ -11,13 +11,23 @@
 <body>
 
     <!-- Barre latérale -->
-    <div class="sidebar">
+    <div class="sidebar" style="display: flex; flex-direction: column; height: 100%;">
         <div class="sidebar-header">
             <h1>Mon Planificateur</h1>
             <button class="btn-add-project" id="btn-new" title="Créer un nouveau projet">+</button>
         </div>
-        <div class="projects-list" id="projects-container">
+        <div class="projects-list" id="projects-container" style="flex-grow: 1; overflow-y: auto;">
             <!-- Liste dynamique des projets -->
+        </div>
+        <div class="sidebar-settings" style="padding: 15px; border-top: 1px solid var(--border-color); font-size: 0.9rem;">
+            <div style="margin-bottom: 8px; color: var(--text-muted); font-weight: 500;">Paramètres de l'application</div>
+            <div style="margin-bottom: 5px;">Lancer au démarrage :</div>
+            <label style="margin-right: 10px; cursor: pointer;">
+                <input type="radio" name="app_autostart" id="app_autostart_yes" value="yes"> Oui
+            </label>
+            <label style="cursor: pointer;">
+                <input type="radio" name="app_autostart" id="app_autostart_no" value="no"> Non
+            </label>
         </div>
     </div>
 
@@ -524,6 +534,22 @@
             });
             document.getElementById('dest_onedrive_active').addEventListener('change', (e) => {
                 toggleDestFields('onedrive', e.target.checked);
+            });
+
+            // --- GESTION DU DÉMARRAGE AUTOMATIQUE GLOBALE ---
+            const isAutostart = ipcRenderer.sendSync('get-autostart-status');
+            if (isAutostart) {
+                document.getElementById('app_autostart_yes').checked = true;
+            } else {
+                document.getElementById('app_autostart_no').checked = true;
+            }
+
+            document.querySelectorAll('input[name="app_autostart"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const enable = e.target.value === 'yes';
+                    ipcRenderer.send('set-autostart', enable);
+                    showToast(`Le lancement au démarrage a été ${enable ? 'activé' : 'désactivé'}.`, "success");
+                });
             });
         });
 
